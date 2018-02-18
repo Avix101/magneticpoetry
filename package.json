@@ -1,0 +1,19 @@
+{
+  "name": "blans-magneticpoetry",
+  "version": "1.0.0",
+  "description": "A simple web-sockets powered multi-user magnetic poetry application",
+  "main": "./src/server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Avix101/magneticpoetry.git"
+  },
+  "author": "Stasha Blank",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Avix101/magneticpoetry/issues"
+  },
+  "homepage": "https://github.com/Avix101/magneticpoetry#readme"
+}
