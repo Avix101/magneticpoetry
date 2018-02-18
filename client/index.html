@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
+	<script src="/socket.io/socket.io.js"></script>
+    <script type="text/babel" >
+        "use strict";
+    
+		let canvas, ctx, socket;
+		
+		let draggingWordIndex;
+		let dragging = false;
+		let prevMousePos = {};
+		
+		let words = [];
+		let wordIndexer = {};
+		
+		const defaultWords = ["ashen", "knight", "verdant", "city", "starless", "sky", "endless", "abyss",
+		"ancient", "quarry", "to", "be", "am", "I", "who", "is", "when", "the", "time", "cannot", "can", "will",
+		"won't", "are", "aren't", "then", "those", "this", "that", "them", "a", "in", "we", "an", "meme", "lord"];
+		
+		const redrawCanvas = () => {
+			requestAnimationFrame(redrawCanvas);
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+			
+			const localZoneLineHeight = (canvas.height / 4) * 3;
+			
+			//Draw local zone line
+			ctx.save();
+			ctx.setLineDash([4, 3]);
+			ctx.beginPath();
+			ctx.moveTo(0, localZoneLineHeight);
+			ctx.lineTo(canvas.width, localZoneLineHeight);
+			ctx.stroke();
+			ctx.restore();
+			
+			
+			ctx.save();
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.strokeStyle = "grey";
+			ctx.lineWidth = 2;
+			
+			for(let i = 0; i < words.length; i++){
+				const word = words[i];
+				ctx.fillStyle = word.color;
+				ctx.strokeRect(word.x - 5, word.y - 5, word.width + 10, 40);
+				ctx.fillRect(word.x - 5, word.y - 5, word.width + 10, 40);
+				ctx.fillStyle = "black";
+				ctx.fillText(word.content, word.x + (word.width / 2), word.y + 16);
+			}
+			
+			ctx.restore();
+		};
+		
+		const sendWordUpdate = (word) => {
+			socket.emit('wordUpdate', {word});
+		};
+		
+		const sendDeleteRequest = (word) => {
+			socket.emit('deleteWord', {word});
+		};
+		
+		const checkWordSpace = (word) => {
+			const localZoneLineHeight = (canvas.height / 4) * 3;
+			
+			if(word.y + 40 < localZoneLineHeight){
+				sendWordUpdate(word);
+				word.deployed = true;
+			} else {
+				if(word.deployed){
+					sendDeleteRequest(word);
+					word.deployed = false;
+				}
+			}
+		};
+		
+		const pickupWord = (e) => {
+			const mouse = getMousePosition(e);
+			
+			for(let i = 0; i < words.length; i++){
+				const word = words[i];
+				
+				if(mouse.x > word.x - 5 && mouse.x < word.x + word.width + 10){
+					if(mouse.y > word.y - 5 && mouse.y < word.y + 40 && word.owner === "local"){
+						prevMousePos = mouse;
+						dragging = true;
+						draggingWordIndex = i;
+						return;
+					}
+				}
+			};
+		};
+		
+		const dragWord = (e) => {
+			if(!dragging){
+				return;
+			}
+			
+			const mouse = getMousePosition(e);
+			const deltaX = mouse.x - prevMousePos.x;
+			const deltaY = mouse.y - prevMousePos.y;
+			prevMousePos = mouse;
+			
+			words[draggingWordIndex].x += deltaX;
+			words[draggingWordIndex].y += deltaY;
+			
+			checkWordSpace(words[draggingWordIndex]);
+		};
+		
+		const dropWord = (e) => {
+		
+			if(!dragging){
+				return;
+			}
+			
+			checkWordSpace(words[draggingWordIndex]);
+			dragging = false;
+			draggingWordIndex = -1;
+		};
+		
+		//Taken from https://stackoverflow.com/questions/17130395/real-mouse-position-in-canvas
+		const getMousePosition = (e) => {
+			const rect = canvas.getBoundingClientRect();
+			return {
+				x: e.clientX - rect.left,
+				y: e.clientY - rect.top,
+			};
+		};
+		
+		const buildWordBank = (wordSet) => {
+			
+			const localZoneLineHeight = (canvas.height / 4) * 3;
+			let x = 10;
+			let y = localZoneLineHeight + 10;
+			
+			for(let i = 0; i < wordSet.length; i++){
+			
+				let width = ctx.measureText(wordSet[i]).width;
+				
+				if(x + width + 20 > canvas.width){
+					y += 50;
+					x = 10;
+				} 
+			
+				const word = {
+					content: wordSet[i],
+					owner: "local",
+					color: "lightblue",
+					x,
+					y,
+					width,
+					deployed: false,
+				}
+				
+				words.push(word);
+				
+				x += width + 20;
+			}
+		};
+		
+		const attachSocketEvents = (sock) => {
+			sock.on('wordUpdate', (data) => {
+				const key = `${data.word.owner}${data.word.content}`;
+				
+				if(wordIndexer[key] && wordIndexer[key].deleted){
+					if(wordIndexer[key].lastUpdate >= data.word.lastUpdate){
+						return;
+					} else {
+						wordIndexer[key] = wordIndexer[key].index;
+					}
+				}
+				
+				if(wordIndexer[key]){
+				
+					const index = wordIndexer[key];
+					
+					if(words[index].lastUpdate >= data.word.lastUpdate){
+						return;
+					}
+					
+					words[index].x = data.word.x;
+					words[index].y = data.word.y;
+					words[index].lastUpdate = data.word.lastUpdate;
+				} else if(wordIndexer[key] && wordIndexer[key].deleted){
+					
+				} else {
+					const index = words.length;
+					words.push(data.word);
+					wordIndexer[key] = index;
+				}
+			});
+			
+			sock.on('deleteWord', (data) => {
+				const key = `${data.word.owner}${data.word.content}`;
+				
+				if(wordIndexer[key]){
+					const index = wordIndexer[key];
+					
+					//Move the word offscreen, remap the index if the word reappears
+					words[index].x = -5000;
+					
+					wordIndexer[key] = {deleted: true, lastUpdate: data.word.lastUpdate, index: index};
+				}
+			});
+		};
+		
+		const init = () => {
+			socket = io.connect();
+			attachSocketEvents(socket);
+			
+			canvas = document.querySelector("#viewport");
+			canvas.addEventListener('mousedown', pickupWord);
+			canvas.addEventListener('mousemove', dragWord);
+			canvas.addEventListener('mouseout', dropWord);
+			canvas.addEventListener('mouseup', dropWord);
+			
+			ctx = canvas.getContext('2d');
+			ctx.font = "32px Arial";
+			
+			buildWordBank(defaultWords);
+			
+			requestAnimationFrame(redrawCanvas);
+		};
+		
+		window.onload = init;
+	
+    </script>
+</head>
+<body>
+	<h1>Magnetic Poetry w/ Friends</h1>
+	<p>Click and drag words from the local word bank (below dotted line) onto the public space (above the dotted line).</p>
+	<p>You can move your own words freely, and even put them back into the local word bank (removing them from public space).</p>
+	<p>Be aware that once you disconnect, your previously placed words will not be movable.</p>
+	<canvas width="800" height="800" id="viewport" style="border: solid 2px black;"></canvas>
+</body>
+</html>
