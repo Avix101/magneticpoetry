@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>Magnetic Poetry</title>
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+	<link rel="stylesheet" type="text/css" href="style.css">
+    <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
+	<script src="/socket.io/socket.io.js"></script>
+    <script type="text/babel" >
+        "use strict";
+		
+		const guestLogin = (e, form) => {
+		
+			const xhr = new XMLHttpRequest();
+			xhr.open('POST', '/auth/guest', true);
+			
+			xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+			xhr.send(JSON.stringify({username: form.querySelector("#usernameInput").value}));
+		};
+	
+		const init = () => {
+			const guestLoginForm = document.querySelector("#guestLoginForm");
+			
+			guestLoginForm.addEventListener('submit', (e) => {
+				guestLogin(e, guestLoginForm);
+			});
+		};
+	
+		window.onload = init;
+    </script>
+</head>
+<body>
+	<h1>Magnetic Poetry Login</h1>
+	<hr>
+	<div class="container">
+	<div class="col-sm-6 col-sm-offset-3">
+		<h2>Login with Google Plus</h2>
+		<p>Login using Google Plus to create or join poetry boards, and have persistent access to your contributions</p>
+		<p>This method requires granting us access to your google profile. Minimal data is stored on our server,
+		and all personal login information is handled through google</p>
+		<a id="googleLogin" href="/auth/google" class="btn btn-danger">Login w/ Google+</a>
+		<hr>
+		<h2>Login as a Guest</h2>
+		<p>Login as a guest with a username to join poetry boards. Once your session expires, you will not be able to edit your changes 
+		as you are a temporary user</p>
+		<form id="guestLoginForm" action="/auth/guest" method="post">
+			<div class="form-group">
+				<label>Username</label>
+				<input id="usernameInput" name="username" type="text" class="form-control" />
+			</div>
+			
+			<input type="submit" class="btn btn-success" value="Login as Guest" />
+		</form>
+	</div>
+	</div>
+</body>
+</html>
