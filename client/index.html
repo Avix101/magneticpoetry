@@ -6,7 +6,7 @@
     <script type="text/babel" >
         "use strict";
     
-		let canvas, ctx, socket;
+		let canvas, ctx, socket, selectedTool, toolActive, audioCtx;
 		
 		let draggingWordIndex;
 		let dragging = false;
@@ -14,6 +14,13 @@
 		
 		let words = [];
 		let wordIndexer = {};
+		
+		const selectBox = {
+			x1: 0,
+			y1: 0,
+			x2: 0,
+			y2: 0,
+		};
 		
 		const defaultWords = ["ashen", "knight", "verdant", "city", "starless", "sky", "endless", "abyss",
 		"ancient", "quarry", "to", "be", "am", "I", "who", "is", "when", "the", "time", "cannot", "can", "will",
@@ -28,6 +35,7 @@
 			//Draw local zone line
 			ctx.save();
 			ctx.setLineDash([4, 3]);
+			ctx.lineDashOffset = -(new Date().getTime() * 0.01) % 7;
 			ctx.beginPath();
 			ctx.moveTo(0, localZoneLineHeight);
 			ctx.lineTo(canvas.width, localZoneLineHeight);
@@ -51,6 +59,12 @@
 			}
 			
 			ctx.restore();
+			
+			switch(selectedTool){
+				case "playbackSelect":
+					drawSelectBox("green", "lime", new Date().getTime(), 0.02);
+					break;
+			}
 		};
 		
 		const sendWordUpdate = (word) => {
@@ -73,6 +87,89 @@
 					word.deployed = false;
 				}
 			}
+		};
+		
+		const activateTool = (e) => {
+			switch(selectedTool){
+				case "playbackSelect":
+					startSelectBox(e);
+					break;
+				case "wordTool":
+					pickupWord(e);
+					break;
+			}
+			
+			toolActive = true;
+		};
+		
+		const moveTool = (e) => {
+		
+			if(!toolActive){
+				return;
+			}
+		
+			switch(selectedTool){
+				case "playbackSelect":
+					updateSelectBox(e);
+					break;
+				case "wordTool":
+					dragWord(e);
+					break;
+			}
+		};
+		
+		const stopTool = (e) => {
+			switch(selectedTool){
+				case "playbackSelect":
+					updateSelectBox(e);
+					parseSelection();
+					break;
+				case "wordTool":
+					dropWord(e);
+					break;
+			}
+			
+			toolActive = false;
+		};
+		
+		const changeTool = (tool) => {
+			selectedTool = tool;
+			
+			selectBox.x1 = 0;
+			selectBox.x2 = 0;
+			selectBox.y1 = 0;
+			selectBox.y2 = 0;
+		};
+		
+		const startSelectBox = (e) => {
+			const mouse = getMousePosition(e);
+			selectBox.x1 = mouse.x;
+			selectBox.x2 = mouse.x;
+			selectBox.y1 = mouse.y;
+			selectBox.y2 = mouse.y;
+		};
+		
+		const updateSelectBox = (e) => {
+			const mouse = getMousePosition(e);
+			selectBox.x2 = mouse.x;
+			selectBox.y2 = mouse.y;
+		};
+		
+		const drawSelectBox = (outerColor, innerColor, timeSeed, speed) => {
+			ctx.save();
+			ctx.setLineDash([4, 3]);
+			ctx.lineDashOffset = -(timeSeed * speed) % 7;
+			ctx.strokeStyle = outerColor;
+			ctx.fillStyle = innerColor;
+			ctx.globalAlpha = 0.3;
+			
+			const width = selectBox.x2 - selectBox.x1;
+			const height = selectBox.y2 - selectBox.y1;
+			
+			ctx.fillRect(selectBox.x1, selectBox.y1, width, height);
+			ctx.strokeRect(selectBox.x1, selectBox.y1, width, height);
+			
+			ctx.restore();
 		};
 		
 		const pickupWord = (e) => {
@@ -126,6 +223,124 @@
 				x: e.clientX - rect.left,
 				y: e.clientY - rect.top,
 			};
+		};
+		
+		const parseSelection = () => {
+			let selectedWords = [];
+			
+			for(let i = 0; i < words.length; i++){
+				const word = words[i];
+				
+				const leftX = selectBox.x1 < selectBox.x2 ? selectBox.x1 : selectBox.x2;
+				const topY = selectBox.y1 < selectBox.y2 ? selectBox.y1 : selectBox.y2;
+				const width = Math.abs(selectBox.x2 - selectBox.x1);
+				const height = Math.abs(selectBox.y2 - selectBox.y1);
+				
+				if(word.x - 5 > leftX + width || word.x + word.width + 10 < leftX){
+					continue;
+				}
+				
+				if(word.y - 5 > topY + height || word.y + 40 < topY){
+					continue;
+				}
+				
+				selectedWords.push(word);
+			}
+			
+			//Arrange words in order on x axis first
+			selectedWords.sort((a, b) => {
+				return a.x - b.x;
+			});
+			
+			const rows = [];
+			
+			for(let i = 0; i < selectedWords.length; i++){
+				const word = selectedWords[i];
+				
+				if(!appendRow(word, rows)){
+					const row = {
+						upper: word.y + 25,
+						lower: word.y - 25,
+						words: []
+					};
+					
+					row.words.push(word);
+					rows.push(row);
+				}
+			}
+			
+			rows.sort((a, b) => {
+				return a.lower - b.lower;
+			});
+			
+			processSelection(rows);
+			console.dir(rows);
+		};
+		
+		//Helper function for parsing word selections
+		const appendRow = (word, rows) => {
+			for(let j = 0; j < rows.length; j++){
+				const row = rows[j];
+				if(word.y <= row.upper && word.y >= row.lower){
+					row.words.push(word);
+					return true;
+				}
+			}
+			return false;
+		};
+		
+		const processSelection = (rows) => {
+			let ttsString = "<speak>";
+			
+			for(let i = 0; i < rows.length; i++){
+				const row = rows[i];
+				let prevX;
+				
+				for(let j = 0; j < row.words.length; j++){
+					const word = row.words[j];
+					
+					if(prevX && prevX < word.x - 50){
+					//Break horizontal gaps
+						ttsString = `${ttsString}, <break strength="strong"/>`;
+					}
+					
+					ttsString = `${ttsString} ${word.content}`;
+					prevX = word.x + word.width + 10;
+				}
+				//Break rows
+				ttsString = `${ttsString} <break strength="x-strong"/>\n`;
+			}
+			
+			ttsString = `${ttsString}</speak>`;
+			
+			console.log(ttsString);
+			requestTTS(ttsString);
+		};
+		
+		//Learned how to process tts using Amazon Polly from:
+		//https://medium.com/@smcelhinney/building-a-greeting-app-using-amazon-polly-and-nodejs-a605f29c20f5
+		const processTTS = (data) => {
+			const source = audioCtx.createBufferSource();
+			audioCtx.decodeAudioData(data, (buffer) => {
+				source.buffer = buffer;
+				source.connect(audioCtx.destination);
+				source.start(audioCtx.currentTime);
+			});
+		};
+		
+		const requestTTS = (ttsString) => {
+			const xhr = new XMLHttpRequest();
+			xhr.open('POST', '/request-tts', true);
+			xhr.responseType = 'arraybuffer';
+			
+			xhr.onload = () => {
+				const data = xhr.response;
+				processTTS(data);
+			};
+			
+			xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+			
+			xhr.send(JSON.stringify({text: ttsString}));
 		};
 		
 		const buildWordBank = (wordSet) => {
@@ -209,11 +424,22 @@
 			socket = io.connect();
 			attachSocketEvents(socket);
 			
+			window.AudioContext = window.AudioContext || window.webkitAudioContext;
+			audioCtx = new AudioContext();
+			
+			selectedTool = "playbackSelect";
+			
 			canvas = document.querySelector("#viewport");
-			canvas.addEventListener('mousedown', pickupWord);
-			canvas.addEventListener('mousemove', dragWord);
-			canvas.addEventListener('mouseout', dropWord);
-			canvas.addEventListener('mouseup', dropWord);
+			canvas.addEventListener('mousedown', activateTool);
+			canvas.addEventListener('mousemove', moveTool);
+			canvas.addEventListener('mouseout', moveTool);
+			canvas.addEventListener('mouseup', stopTool);
+			
+			const playbackToolSelect = document.querySelector("#playbackTool");
+			const wordToolSelect = document.querySelector("#wordTool");
+			
+			playbackToolSelect.addEventListener('click', () => changeTool("playbackSelect"));
+			wordToolSelect.addEventListener('click', () => changeTool("wordTool"));
 			
 			ctx = canvas.getContext('2d');
 			ctx.font = "32px Arial";
@@ -232,6 +458,8 @@
 	<p>Click and drag words from the local word bank (below dotted line) onto the public space (above the dotted line).</p>
 	<p>You can move your own words freely, and even put them back into the local word bank (removing them from public space).</p>
 	<p>Be aware that once you disconnect, your previously placed words will not be movable.</p>
+	<button id="playbackTool">Playback Select Tool</button>
+	<button id="wordTool">Word Movement Tool</button>
 	<canvas width="800" height="800" id="viewport" style="border: solid 2px black;"></canvas>
 </body>
 </html>

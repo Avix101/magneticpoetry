@@ -1,13 +1,24 @@
 const http = require('http');
 const app = require('express')();
+const bodyParser = require('body-parser');
+const stream = require('stream');
 
 // Allows for path resolution, which is required by express
 const path = require('path');
+
+//Import Amazon Web Services sdk
+const AWS = require('aws-sdk');
+
+//Create a new polly object to handle requests
+const polly = new AWS.Polly();
 
 const server = http.Server(app);
 const io = require('socket.io')(server);
 
 const port = process.env.PORT || process.env.NODE_PORT || 3000;
+
+app.use(bodyParser.urlencoded({extended: false}));
+app.use(bodyParser.json());
 
 // Start express powered http server
 server.listen(port);
@@ -18,6 +29,34 @@ app.get('/*', (req, res) => {
   } else {
     res.status(404).send('404 - Requested Resource Not Found');
   }
+});
+
+app.post('/request-tts', (req, res) => {
+	polly.synthesizeSpeech({
+		OutputFormat: 'mp3',
+		Text: req.body.text,
+		TextType: 'ssml',
+		// VoiceId: 'Mizuki',
+		VoiceId: 'Nicole',
+	}, (err, data) => {
+		if (err){
+			console.log(err);
+			res.status(400).send(err);
+		} else {
+			//Streaming tech taken from:
+			//https://medium.com/@smcelhinney/building-a-greeting-app-using-amazon-polly-and-nodejs-a605f29c20f5
+			const bufferStream = new stream.PassThrough();
+			bufferStream.end(new Buffer(data.AudioStream));
+			
+			res.set({'Content-Type': 'audio/mpeg'});
+			
+			bufferStream.on('error', (err) => {
+				res.status(400).send(err);
+			});
+			
+			bufferStream.pipe(res);
+		}
+	});
 });
 
 const possibleColors = ['#93b881', 'pink', '#95879c', '#fbc97f', 'yellow', 'cyan', 'magenta'];
