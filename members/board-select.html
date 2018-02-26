@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>Magnetic Poetry</title>
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+	<link rel="stylesheet" type="text/css" href="/style.css">
+    <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
+	<script src="/socket.io/socket.io.js"></script>
+    <script type="text/babel" >
+        "use strict";
+	
+		let socket;
+	
+		const displayBoards = (xhr) => {
+			console.log(xhr.response);
+			const boards = JSON.parse(xhr.response);
+			
+			const activeBoardsDiv = document.querySelector("#activeBoards");
+			const inactiveBoardsDiv = document.querySelector("#inactiveBoards");
+			
+			activeBoardsDiv.innerHTML = "";
+			inactiveBoardsDiv.innerHTML = "";
+			
+			for(let i = 0; i < boards.length; i++){
+				const board = boards[i];
+				
+				const para = document.createElement('p');
+				const link = document.createElement('a');
+				link.href = `/members/index.html?board=${board.id}`;
+				link.textContent = `${board.name} (${board.activeCount}/8)`;
+				
+				para.appendChild(link);
+				
+				if(board.activeCount > 0){
+					activeBoardsDiv.appendChild(para);
+				} else {
+					inactiveBoardsDiv.appendChild(para);
+				}
+			}
+		};
+	
+		const getBoards = () => {
+			const xhr = new XMLHttpRequest();
+			
+			xhr.open('GET', '/members/getBoards');
+			xhr.setRequestHeader('Accept', 'application/json');
+			
+			xhr.onload = () => displayBoards(xhr);
+			
+			xhr.send();
+		};
+		
+		const createBoard = (e, form) => {
+			e.preventDefault();
+		
+			const action = form.getAttribute("action");
+			const method = form.getAttribute("method");
+			
+			const boardNameInput = form.querySelector("#boardName");
+			
+			if(boardNameInput.value === ""){
+				return false;
+			}
+			
+			const boardName = boardNameInput.value;
+			boardNameInput.value = "";
+			
+			const xhr = new XMLHttpRequest();
+			
+			xhr.open(method, action);
+			xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+			xhr.setRequestHeader("Accept", "application/json");
+			
+			xhr.onload = getBoards;
+			
+			const data = `boardname=${boardName}`;
+			
+			xhr.send(data);
+			
+			return false;
+		};
+	
+		const init = () => {
+			//socket = io.connect();
+			
+			getBoards();
+		
+			const createBoardForm = document.querySelector("#createBoardForm");
+			createBoardForm.addEventListener('submit', (e) => {
+				createBoard(e, createBoardForm);
+			});
+		};
+	
+		window.onload = init;
+    </script>
+</head>
+<body>
+	<h1>Magnetic Poetry Board Select</h1>
+	<hr>
+	<div class="container">
+	<div class="col">
+		<h2>Create New Poetry Board</h2>
+		<p>Create a brand new poetry board!</p>
+		<form id="createBoardForm" action="/members/createBoard" method="post">
+			<div class="form-group">
+				<label>Board Name</label>
+				<input id="boardName" name="boardname" type="text" class="form-control" />
+			</div>
+			
+			<input id="createBoard" type="submit" class="btn btn-large btn-success" value="Create New Board+" />
+		</form>
+		<hr>
+		
+		<h2>Join an Existing Poetry Board</h2>
+		<h3>Active Boards</h3>
+		<div id="activeBoards"></div>
+		<hr>
+		
+		<h3>Inactive Boards</h3>
+		<div id="inactiveBoards"></div>
+	</div>
+	</div>
+</body>
+</html>

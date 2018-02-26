@@ -1,19 +1,13 @@
 const http = require('http');
+const url = require('url');
+const query = require('querystring');
 const express = require('express');
 
 const app = express();
 const bodyParser = require('body-parser');
 const stream = require('stream');
 
-// Integrate socket.io
-const server = http.Server(app);
-const io = require('socket.io')(server);
-
-// Really helpful passport tut: https://www.youtube.com/watch?v=5VHBy2PjxKs (entire playlist)
-const passport = require('passport');
-const passportConfig = require('./auth/passport-config.js');
-
-passportConfig.init();
+const Board = require('./board-model.js');
 
 // Set up cookie session
 const cookieSession = require('cookie-session');
@@ -23,13 +17,137 @@ const cookieS = cookieSession({
   keys: [process.env.COOKIE_SECRET],
 });
 
+// Environment Vars
+const possibleColors = ['#93b881', 'pink', '#95879c', '#fbc97f', 'yellow', 'cyan', 'magenta'];
+const users = {};
+const roomAllocations = {};
+const socketRoomPairs = {};
+// const words = {};
+
+const activeBoards = {};
+const maxRoomCapacity = 8;
+const boardsToUpdate = {};
+
+// Integrate socket.io
+const server = http.Server(app);
+const io = require('socket.io')(server);
+
+const socketAuthCheck = session => session.passport && session.passport.user;
+
+io.use((socket, next) => {
+  const req = { headers: { cookie: socket.request.headers.cookie } };
+  const res = { getHeader: () => {}, setHeader: () => {} };
+
+  cookieS(req, res, () => {
+    if (socketAuthCheck(req.session)) {
+      const id = req.session.passport.user;
+
+      if (!roomAllocations[id]) {
+        socket.emit('reject');
+      } else {
+        next();
+      }
+    }
+  });
+});
+
+// Start of board handling code
+const createBoard = (name, owner, callback) => {
+  new Board({
+    name,
+    owner,
+    board: { words: {} },
+  }).save().then((newBoard) => {
+    activeBoards[newBoard._id] = {
+      _id: newBoard._id,
+      name: newBoard.name,
+      owner: newBoard.owner,
+      board: newBoard.board,
+    };
+    activeBoards[newBoard._id].activeCount = 0;
+
+    callback();
+  });
+};
+
+Board.find({}, (err, boards) => {
+  if (err) throw err;
+
+  for (let i = 0; i < boards.length; i++) {
+    const board = boards[i];
+    activeBoards[board._id] = {
+      _id: board._id,
+      name: board.name,
+      owner: board.owner,
+      board: board.board,
+    };
+    activeBoards[board._id].activeCount = 0;
+  }
+});
+
+const queueBoardUpdate = (boardId) => {
+  boardsToUpdate[boardId] = true;
+};
+
+const updateBoards = () => {
+  const updateList = Object.keys(boardsToUpdate);
+
+  // let counter = 0;
+
+  for (let i = 0; i < updateList.length; i++) {
+    const updateItem = updateList[i];
+    if (boardsToUpdate[updateItem]) {
+      boardsToUpdate[updateItem] = false;
+
+      const dbQuery = { _id: updateItem };
+      const updatedBoard = { board: { words: activeBoards[updateItem].board.words } };
+      Board.findOneAndUpdate(dbQuery, updatedBoard, { upsert: true }, (err) => {
+        if (err) throw err;
+      });
+
+      // counter++;
+    }
+  }
+
+  // console.log("Boards Updated " + counter);
+
+  setTimeout(updateBoards, 1000);
+};
+
+updateBoards();
+
+// End of board handling code
+
+const refreshActiveCount = () => {
+  const boardIds = Object.keys(activeBoards);
+  const roomIds = Object.keys(io.sockets.adapter.rooms);
+
+  // Reset all active board counts first, rooms that
+  // have 0 people may be removed from socket room list
+  for (let i = 0; i < boardIds.length; i++) {
+    activeBoards[boardIds[i]].activeCount = 0;
+  }
+
+  for (let i = 0; i < roomIds.length; i++) {
+    const roomId = roomIds[i];
+
+    if (activeBoards[roomId]) {
+      activeBoards[roomId].activeCount = io.sockets.adapter.rooms[roomId].length;
+    }
+  }
+};
+
+// Really helpful passport tut: https://www.youtube.com/watch?v=5VHBy2PjxKs (entire playlist)
+const passport = require('passport');
+const passportConfig = require('./auth/passport-config.js');
+
+passportConfig.init();
+
 // Connect to Mongo DB using mongoose
 const mongoose = require('mongoose');
 const User = require('./auth/user-model.js');
 
-mongoose.connect(process.env.MONGODB_URI, () => {
-
-});
+mongoose.connect(process.env.MONGODB_URI);
 
 // Allows for path resolution, which is required by express
 const path = require('path');
@@ -61,6 +179,20 @@ const isLoggedIn = (req, res, next) => {
     res.redirect('/login.html');
   } else {
     next();
+  }
+};
+
+const hasGoogleId = (req, res, next) => {
+  if (req.user) {
+    User.findById(req.user).then((user) => {
+      if (user.google && user.google.googleId) {
+        next();
+      } else {
+        res.status(401).send();
+      }
+    });
+  } else {
+    res.status(401).send();
   }
 };
 
@@ -99,7 +231,6 @@ app.post('/request-tts', (req, res) => {
     VoiceId: 'Nicole',
   }, (err, data) => {
     if (err) {
-      console.log(err);
       res.status(400).send(err);
     } else {
       // Streaming tech taken from:
@@ -118,64 +249,128 @@ app.post('/request-tts', (req, res) => {
   });
 });
 
+app.get('/members/getBoards', isLoggedIn, (req, res) => {
+  refreshActiveCount();
+  Board.find({}, (err, boards) => {
+    const data = boards.map((boardObj) => {
+      let activeCount = 0;
+
+      if (activeBoards[boardObj._id] && activeBoards[boardObj._id].activeCount) {
+        ({ activeCount } = { activeCount: activeBoards[boardObj._id].activeCount });
+      }
+
+      const newBoard = {
+        id: boardObj._id,
+        name: boardObj.name,
+        board: boardObj.board,
+        activeCount,
+      };
+
+      return newBoard;
+    });
+
+    res.send(JSON.stringify(data));
+  });
+});
+
+app.post('/members/createBoard', isLoggedIn, hasGoogleId, (req, res) => {
+  User.findById(req.user).then((user) => {
+    createBoard(req.body.boardname, user.google.googleId, () => { res.status(201).send(); });
+  });
+});
+
+app.get(['/members/index.html', '/members'], isLoggedIn, (req, res, next) => {
+  refreshActiveCount();
+  const parsedUrl = url.parse(req.url);
+  const params = query.parse(parsedUrl.query);
+  if (params.board
+&& activeBoards[params.board]
+&& activeBoards[params.board].activeCount < maxRoomCapacity) {
+    roomAllocations[req.user._id] = params.board;
+    next();
+  } else {
+    res.redirect('/members/board-select.html');
+  }
+});
+
 app.use('/members/', isLoggedIn, express.static(path.resolve(`${__dirname}/../members`)), catchHiddenRequests);
 app.use('/', express.static(path.resolve(`${__dirname}/../client`)), catchHiddenRequests);
 
-const possibleColors = ['#93b881', 'pink', '#95879c', '#fbc97f', 'yellow', 'cyan', 'magenta'];
-const users = {};
-const words = {};
-// const rooms = [];
-// const roomIndex = 0;
-
-/* const onCreateRoom = (socket) => {
-  socket.on('createRoom', () => {
-    newRoomId++;
-    const newRoomId = `room${roomIndex}`;
-
-    // const roomObj
-  });
-}; */
-
 const onWordUpdate = (socket) => {
   socket.on('wordUpdate', (data) => {
-    const { word } = data;
-    word.owner = socket.id;
-    word.color = users[socket.id].color;
-    word.lastUpdate = new Date().getTime();
+    const req = { headers: { cookie: socket.request.headers.cookie } };
+    const res = { getHeader: () => {}, setHeader: () => {} };
 
-    const key = `${word.owner}${word.content}`;
-    words[key] = word;
+    cookieS(req, res, () => {
+      if (socketAuthCheck(req.session)) {
+        const id = req.session.passport.user;
 
-    socket.broadcast.emit('wordUpdate', { word });
+        const { word } = data;
+
+        if (word.owner !== id) {
+          return;
+        }
+
+
+        word.color = users[socket.id].color;
+        word.lastUpdate = new Date().getTime();
+
+        const key = `${word.owner}${word.content}`;
+
+        const boardId = roomAllocations[id];
+        activeBoards[boardId].board.words[key] = word;
+
+        socket.broadcast.to(boardId).emit('wordUpdate', { word });
+
+        queueBoardUpdate(boardId);
+      }
+    });
   });
 };
 
 const onWordDelete = (socket) => {
   socket.on('deleteWord', (data) => {
-    const { word } = data;
-    word.owner = socket.id;
-    word.lastUpdate = new Date().getTime();
+    const req = { headers: { cookie: socket.request.headers.cookie } };
+    const res = { getHeader: () => {}, setHeader: () => {} };
 
-    const key = `${word.owner}${word.content}`;
+    cookieS(req, res, () => {
+      if (socketAuthCheck(req.session)) {
+        const id = req.session.passport.user;
 
-    if (words[key]) {
-      delete words[key];
-      socket.broadcast.emit('deleteWord', { word });
-    }
+        const { word } = data;
+
+        if (word.owner !== id) {
+          return;
+        }
+
+        word.lastUpdate = new Date().getTime();
+
+        const key = `${word.owner}${word.content}`;
+
+        const boardId = roomAllocations[id];
+
+        if (activeBoards[boardId].board.words[key]) {
+          delete activeBoards[boardId].board.words[key];
+
+          socket.broadcast.to(boardId).emit('deleteWord', { word });
+
+          queueBoardUpdate(boardId);
+        }
+      }
+    });
   });
 };
 
 const onDisconnect = (socket) => {
   socket.on('disconnect', () => {
-    possibleColors.push(users[socket.id].color);
+    socket.leave(socketRoomPairs[socket.id]);
+    refreshActiveCount();
     delete users[socket.id];
+    delete socketRoomPairs[socket.id];
   });
 };
 
-const socketAuthCheck = session => session.passport && session.passport.user;
-
 io.on('connection', (socket) => {
-  socket.join('room1');
   onWordUpdate(socket);
   onWordDelete(socket);
   onDisconnect(socket);
@@ -188,29 +383,38 @@ io.on('connection', (socket) => {
   const res = { getHeader: () => {}, setHeader: () => {} };
 
   cookieS(req, res, () => {
-    console.log(req.session); // Do something with req.session
     if (socketAuthCheck(req.session)) {
       const id = req.session.passport.user;
+
       User.findById(id).then((user) => {
         const username = user.google.username || user.local.username || 'Unknown';
-        console.log(username);
         users[socket.id].name = username;
-        // Emit username
+        socket.emit('credentials', { username, id: user._id });
+
+        const boardId = roomAllocations[id];
+
+        if (!boardId) {
+          return;
+        }
+
+        socketRoomPairs[socket.id] = boardId;
+        socket.join(boardId);
+        refreshActiveCount();
+
+        let randomColor;
+        if (possibleColors.length > 0) {
+          randomColor = possibleColors[Math.floor(Math.random() * possibleColors.length)];
+        } else {
+          randomColor = 'grey';
+        }
+
+        users[socket.id].color = randomColor;
+
+        const wordKeys = Object.keys(activeBoards[boardId].board.words);
+        for (let i = 0; i < wordKeys.length; i++) {
+          socket.emit('wordUpdate', { word: activeBoards[boardId].board.words[wordKeys[i]] });
+        }
       });
     }
   });
-
-  let randomColor;
-  if (possibleColors.length > 0) {
-    randomColor = possibleColors[Math.floor(Math.random() * possibleColors.length)];
-  } else {
-    randomColor = 'grey';
-  }
-
-  users[socket.id].color = randomColor;
-
-  const wordKeys = Object.keys(words);
-  for (let i = 0; i < wordKeys.length; i++) {
-    socket.emit('wordUpdate', { word: words[wordKeys[i]] });
-  }
 });

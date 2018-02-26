@@ -5,7 +5,6 @@
 	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
 	<link rel="stylesheet" type="text/css" href="style.css">
     <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
-	<script src="/socket.io/socket.io.js"></script>
     <script type="text/babel" >
         "use strict";
 		
@@ -14,7 +13,7 @@
 			const xhr = new XMLHttpRequest();
 			xhr.open('POST', '/auth/guest', true);
 			
-			xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+			xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 			xhr.send(JSON.stringify({username: form.querySelector("#usernameInput").value}));
 		};
 	

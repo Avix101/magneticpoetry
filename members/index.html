@@ -9,7 +9,7 @@
     <script type="text/babel" >
         "use strict";
     
-		let canvas, ctx, socket, selectedTool, toolActive, audioCtx;
+		let canvas, ctx, socket, selectedTool, toolActive, audioCtx, owner, name;
 		
 		let draggingWordIndex;
 		let dragging = false;
@@ -182,7 +182,7 @@
 				const word = words[i];
 				
 				if(mouse.x > word.x - 5 && mouse.x < word.x + word.width + 10){
-					if(mouse.y > word.y - 5 && mouse.y < word.y + 40 && word.owner === "local"){
+					if(mouse.y > word.y - 5 && mouse.y < word.y + 40 && word.owner === owner){
 						prevMousePos = mouse;
 						dragging = true;
 						draggingWordIndex = i;
@@ -277,7 +277,6 @@
 			});
 			
 			processSelection(rows);
-			console.dir(rows);
 		};
 		
 		//Helper function for parsing word selections
@@ -294,6 +293,10 @@
 		
 		const processSelection = (rows) => {
 			let ttsString = "<speak>";
+			
+			if(rows.length === 0){
+				return;
+			}
 			
 			for(let i = 0; i < rows.length; i++){
 				const row = rows[i];
@@ -316,7 +319,6 @@
 			
 			ttsString = `${ttsString}</speak>`;
 			
-			console.log(ttsString);
 			requestTTS(ttsString);
 		};
 		
@@ -363,7 +365,7 @@
 			
 				const word = {
 					content: wordSet[i],
-					owner: "local",
+					owner,
 					color: "lightblue",
 					x,
 					y,
@@ -371,7 +373,10 @@
 					deployed: false,
 				}
 				
+				const key = `${word.owner}${word.content}`;
+				const index = words.length;
 				words.push(word);
+				wordIndexer[key] = index;
 				
 				x += width + 20;
 			}
@@ -400,10 +405,13 @@
 					words[index].x = data.word.x;
 					words[index].y = data.word.y;
 					words[index].lastUpdate = data.word.lastUpdate;
-				} else if(wordIndexer[key] && wordIndexer[key].deleted){
-					
 				} else {
 					const index = words.length;
+					
+					if(data.word.owner === owner){
+						data.word.color = "lightblue";
+					}
+					
 					words.push(data.word);
 					wordIndexer[key] = index;
 				}
@@ -420,6 +428,13 @@
 					
 					wordIndexer[key] = {deleted: true, lastUpdate: data.word.lastUpdate, index: index};
 				}
+			});
+			
+			sock.on('credentials', (data) => {
+				owner = data.id;
+				name = data.username;
+				
+				buildWordBank(defaultWords);
 			});
 		};
 		
@@ -446,8 +461,6 @@
 			
 			ctx = canvas.getContext('2d');
 			ctx.font = "32px Arial";
-			
-			buildWordBank(defaultWords);
 			
 			requestAnimationFrame(redrawCanvas);
 		};
