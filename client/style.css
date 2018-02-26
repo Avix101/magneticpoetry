@@ -1,0 +1,17 @@
+.bold-text{
+	font-weight: bold;
+}
+#mainContainer {
+	width: 95%;
+}
+
+#canvasContainer {
+	text-align: center;
+	overflow: auto;
+}
+
+#chatRoom {
+	width: 95%;
+	max-height: 300px;
+	overflow: auto;
+}

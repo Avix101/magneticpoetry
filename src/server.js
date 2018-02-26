@@ -56,7 +56,7 @@ const createBoard = (name, owner, callback) => {
   new Board({
     name,
     owner,
-    board: { words: {} },
+    board: { NullData: 'Empty String', words: {} },
   }).save().then((newBoard) => {
     activeBoards[newBoard._id] = {
       _id: newBoard._id,
@@ -361,6 +361,22 @@ const onWordDelete = (socket) => {
   });
 };
 
+const onChatMessage = (socket) => {
+  socket.on('chatMessage', (data) => {
+    const req = { headers: { cookie: socket.request.headers.cookie } };
+    const res = { getHeader: () => {}, setHeader: () => {} };
+
+    cookieS(req, res, () => {
+      if (socketAuthCheck(req.session)) {
+        const id = req.session.passport.user;
+        const boardId = roomAllocations[id];
+
+        io.sockets.in(boardId).emit('chatMessage', data);
+      }
+    });
+  });
+};
+
 const onDisconnect = (socket) => {
   socket.on('disconnect', () => {
     socket.leave(socketRoomPairs[socket.id]);
@@ -373,6 +389,7 @@ const onDisconnect = (socket) => {
 io.on('connection', (socket) => {
   onWordUpdate(socket);
   onWordDelete(socket);
+  onChatMessage(socket);
   onDisconnect(socket);
 
   users[socket.id] = {};
