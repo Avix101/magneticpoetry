@@ -29,19 +29,20 @@
     </script>
 </head>
 <body>
-	<h1>Magnetic Poetry Login</h1>
-	<hr>
+	<div id="header" class="text-center bg-primary">
+		<h1>Magnetic Poetry Login</h1>
+		<hr>
+	</div>
 	<div class="container">
 	<div class="col-sm-6 col-sm-offset-3">
 		<h2>Login with Google Plus</h2>
-		<p>Login using Google Plus to create or join poetry boards, and have persistent access to your contributions</p>
-		<p>This method requires granting us access to your google profile. Minimal data is stored on our server,
-		and all personal login information is handled through google</p>
+		<p>Login using Google Plus to create or join poetry boards, and have persistent access to your contributions.</p>
+		<p>This method requires granting us access to your Google profile- specific permissions will be requested on login. We only store your Google ID and Google
+		Display Name in our records.</p>
 		<a id="googleLogin" href="/auth/google" class="btn btn-danger">Login w/ Google+</a>
 		<hr>
 		<h2>Login as a Guest</h2>
-		<p>Login as a guest with a username to join poetry boards. Once your session expires, you will not be able to edit your changes 
-		as you are a temporary user</p>
+		<p>Login as a guest with just a username to join poetry boards. Once your session expires (4 hours), you will not be able to edit your changes.</p>
 		<form id="guestLoginForm" action="/auth/guest" method="post">
 			<div class="form-group">
 				<label>Username</label>

@@ -10,8 +10,26 @@
 	overflow: auto;
 }
 
-#chatRoom {
+#chatRoom, #instructions {
 	width: 95%;
 	max-height: 300px;
 	overflow: auto;
+}
+
+#instructions p {
+	width: 90%;
+}
+
+#viewport {
+	border: solid 1px black;
+}
+
+.sideBySide {
+	display: inline-block;
+	width: 48%;
+}
+
+#header h1 {
+	margin-top: 0;
+	padding-top: 20px;
 }

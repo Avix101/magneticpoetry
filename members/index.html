@@ -4,6 +4,10 @@
 	<title>Magnetic Poetry</title>
 	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
 	<link rel="stylesheet" type="text/css" href="/style.css">
+	
+	<!-- Google Fonts -->
+	<link href="https://fonts.googleapis.com/css?family=Amatic+SC|Berkshire+Swash|Gloria+Hallelujah|Indie+Flower|Kaushan+Script|Nanum+Pen+Script|Pacifico|Permanent+Marker|Tangerine" rel="stylesheet">
+	
     <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
 	<script src="/socket.io/socket.io.js"></script>
     <script type="text/babel" >
@@ -18,7 +22,22 @@
 		let prevMousePos = {};
 		
 		let words = [];
-		let wordIndexer = {};
+		let wordsToEdit = [];
+		const wordIndexer = {};
+		
+		let newWord = {
+			content: "",
+			owner,
+			created: new Date().getTime(),
+			bgColor: "#ADD8E6",
+			textColor: "#000000",
+			font: "Arial",
+			fontSize: 32,
+			x: 0,
+			y: 0,
+			width: 0,
+			deployed: false,
+		}
 		
 		const selectBox = {
 			x1: 0,
@@ -56,29 +75,63 @@
 			ctx.stroke();
 			ctx.restore();
 			
+			const time = new Date().getTime();
 			
+			for(let i = 0; i < words.length; i++){
+				const word = words[i];
+				
+				drawWord(word, 1);
+				const rect = {x: word.x - 5, y: word.y - 5, width: word.width + 10, height: word.fontSize + 8};
+				
+				if(word.owner === owner){
+					switch(selectedTool){
+						case "wordTool":
+							drawSelectBox("blue", "blue", time, 0.01, rect);
+							break;
+						case "editTool":
+							drawSelectBox("yellow", "yellow", time, 0.01, rect);
+							break;
+						case "deleteTool":
+							drawSelectBox("red", "red", time, 0.01, rect);
+							break;
+					}
+				}
+			}
+			
+			switch(selectedTool){
+				case "playbackSelect":
+					drawSelectBox("green", "lime", time, 0.02);
+					break;
+				case "addTool":
+					drawWord(newWord, 0.5);
+					break;
+				case "editTool":
+					drawSelectBox("orange", "orange", time, 0.02); 
+				case "deleteTool":
+					drawSelectBox("red", "red", time, 0.03);
+					break;
+			}
+		};
+		
+		const drawWord = (word, opacity) => {
+		
 			ctx.save();
 			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
 			ctx.strokeStyle = "grey";
 			ctx.lineWidth = 2;
+			ctx.globalAlpha = opacity;
+		
+			const rect = {x: word.x - 5, y: word.y - 5, width: word.width + 10, height: word.fontSize + 8};
+			ctx.fillStyle = word.bgColor;
+			ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+			ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
 			
-			for(let i = 0; i < words.length; i++){
-				const word = words[i];
-				ctx.fillStyle = word.color;
-				ctx.strokeRect(word.x - 5, word.y - 5, word.width + 10, 40);
-				ctx.fillRect(word.x - 5, word.y - 5, word.width + 10, 40);
-				ctx.fillStyle = "black";
-				ctx.fillText(word.content, word.x + (word.width / 2), word.y + 16);
-			}
+			ctx.font = `${word.fontSize}px ${word.font}`;
+			ctx.fillStyle = word.textColor;
+			ctx.fillText(word.content, word.x + (word.width / 2), word.y + word.fontSize / 2);
 			
 			ctx.restore();
-			
-			switch(selectedTool){
-				case "playbackSelect":
-					drawSelectBox("green", "lime", new Date().getTime(), 0.02);
-					break;
-			}
 		};
 		
 		const sendWordUpdate = (word) => {
@@ -92,13 +145,13 @@
 		const checkWordSpace = (word) => {
 			const localZoneLineHeight = (canvas.height / 4) * 3;
 			
-			if(word.y + 40 < localZoneLineHeight){
-				sendWordUpdate(word);
+			if(word.y + word.fontSize + 8 < localZoneLineHeight){
 				word.deployed = true;
+				sendWordUpdate(word);
 			} else {
 				if(word.deployed){
-					sendDeleteRequest(word);
 					word.deployed = false;
+					sendDeleteRequest(word);
 				}
 			}
 		};
@@ -111,12 +164,46 @@
 				case "wordTool":
 					pickupWord(e);
 					break;
+				case "addTool":
+					placeNewWord(e);
+					break;
+				case "editTool":
+					startSelectBox(e);
+					break;
+				case "deleteTool":
+					startSelectBox(e);
+					break;
 			}
 			
 			toolActive = true;
 		};
 		
 		const moveTool = (e) => {
+		
+			if(!toolActive && selectedTool != "addTool"){
+				return;
+			}
+		
+			switch(selectedTool){
+				case "playbackSelect":
+					updateSelectBox(e);
+					break;
+				case "addTool":
+					updateNewWord(e);
+					break;
+				case "wordTool":
+					dragWord(e);
+					break;
+				case "editTool":
+					updateSelectBox(e);
+					break;
+				case "deleteTool":
+					updateSelectBox(e);
+					break;
+			}
+		};
+		
+		const stopTool = (e) => {
 		
 			if(!toolActive){
 				return;
@@ -125,34 +212,40 @@
 			switch(selectedTool){
 				case "playbackSelect":
 					updateSelectBox(e);
-					break;
-				case "wordTool":
-					dragWord(e);
-					break;
-			}
-		};
-		
-		const stopTool = (e) => {
-			switch(selectedTool){
-				case "playbackSelect":
-					updateSelectBox(e);
-					parseSelection();
+					parseSelection(arrangeWords);
 					break;
 				case "wordTool":
 					dropWord(e);
+					break;
+				case "editTool":
+					updateSelectBox(e);
+					parseSelection(editSelection);
+					break;
+				case "deleteTool":
+					updateSelectBox(e);
+					parseSelection(deleteSelection);
 					break;
 			}
 			
 			toolActive = false;
 		};
 		
-		const changeTool = (tool) => {
+		const changeTool = (e, tool) => {
 			selectedTool = tool;
 			
 			selectBox.x1 = 0;
 			selectBox.x2 = 0;
 			selectBox.y1 = 0;
 			selectBox.y2 = 0;
+			
+			const wordContentField = document.querySelector("#wordContent");
+			wordContentField.disabled = selectedTool === "editTool";
+			
+			const marker = document.querySelector("#selectedToolMarker");
+			marker.remove();
+			
+			const toolPara = e.currentTarget.parentElement;
+			toolPara.appendChild(marker);
 		};
 		
 		const startSelectBox = (e) => {
@@ -169,7 +262,39 @@
 			selectBox.y2 = mouse.y;
 		};
 		
-		const drawSelectBox = (outerColor, innerColor, timeSeed, speed) => {
+		const updateNewWord = (e) => {
+			console.log(newWord);
+			const mouse = getMousePosition(e);
+			newWord.x = mouse.x;
+			newWord.y = mouse.y;
+		};
+		
+		const placeNewWord = (e) => {
+			newWord.owner = owner;
+			newWord.created = new Date().getTime();
+			const key = `${newWord.owner}${newWord.content}${newWord.created}`;
+			const index = words.length;
+			words.push(newWord);
+			wordIndexer[key] = index;
+			
+			checkWordSpace(words[index]);
+			
+			newWord = {
+				content: newWord.content,
+				owner,
+				created: new Date().getTime(),
+				bgColor: newWord.bgColor,
+				textColor: newWord.textColor,
+				font: newWord.font,
+				fontSize: newWord.fontSize,
+				x: newWord.x,
+				y: newWord.y,
+				width: newWord.width,
+				deployed: false,
+			};
+		};
+		
+		const drawSelectBox = (outerColor, innerColor, timeSeed, speed, rect) => {
 			ctx.save();
 			ctx.setLineDash([4, 3]);
 			ctx.lineDashOffset = -(timeSeed * speed) % 7;
@@ -177,11 +302,16 @@
 			ctx.fillStyle = innerColor;
 			ctx.globalAlpha = 0.3;
 			
-			const width = selectBox.x2 - selectBox.x1;
-			const height = selectBox.y2 - selectBox.y1;
+			if(rect !== undefined){
+				ctx.lineWidth = 3;
+				ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+			} else {
+				const width = selectBox.x2 - selectBox.x1;
+				const height = selectBox.y2 - selectBox.y1;
 			
-			ctx.fillRect(selectBox.x1, selectBox.y1, width, height);
-			ctx.strokeRect(selectBox.x1, selectBox.y1, width, height);
+				ctx.fillRect(selectBox.x1, selectBox.y1, width, height);
+				ctx.strokeRect(selectBox.x1, selectBox.y1, width, height);
+			}
 			
 			ctx.restore();
 		};
@@ -193,7 +323,7 @@
 				const word = words[i];
 				
 				if(mouse.x > word.x - 5 && mouse.x < word.x + word.width + 10){
-					if(mouse.y > word.y - 5 && mouse.y < word.y + 40 && word.owner === owner){
+					if(mouse.y > word.y - 5 && mouse.y < word.y + word.fontSize + 8 && word.owner === owner){
 						prevMousePos = mouse;
 						dragging = true;
 						draggingWordIndex = i;
@@ -239,7 +369,7 @@
 			};
 		};
 		
-		const parseSelection = () => {
+		const parseSelection = (callback) => {
 			let selectedWords = [];
 			
 			for(let i = 0; i < words.length; i++){
@@ -250,17 +380,22 @@
 				const width = Math.abs(selectBox.x2 - selectBox.x1);
 				const height = Math.abs(selectBox.y2 - selectBox.y1);
 				
-				if(word.x - 5 > leftX + width || word.x + word.width + 10 < leftX){
+				if(word.x - 5 > leftX + width || word.x + word.width + 5 < leftX){
 					continue;
 				}
 				
-				if(word.y - 5 > topY + height || word.y + 40 < topY){
+				if(word.y - 5 > topY + height || word.y - 5 + word.fontSize + 8 < topY){
 					continue;
 				}
 				
 				selectedWords.push(word);
 			}
 			
+			callback(selectedWords);
+		};
+		
+		const arrangeWords = (selectedWords) => {
+		
 			//Arrange words in order on x axis first
 			selectedWords.sort((a, b) => {
 				return a.x - b.x;
@@ -273,8 +408,8 @@
 				
 				if(!appendRow(word, rows)){
 					const row = {
-						upper: word.y + 25,
-						lower: word.y - 25,
+						upper: word.y + (word.fontSize * 3) / 4,
+						lower: word.y - (word.fontSize * 3) / 4,
 						words: []
 					};
 					
@@ -288,6 +423,87 @@
 			});
 			
 			processSelection(rows);
+		};
+		
+		const editSelection = (selectedWords) => {
+			wordsToEdit = selectedWords;
+			
+			const wordContentField = document.querySelector("#wordContent");
+			
+			if(wordsToEdit.length == 1){
+				const word = wordsToEdit[0];
+				
+				if(word.owner !== owner){
+					return;
+				}
+				
+				const bgColorField = document.querySelector("#bgColorSelect");
+				const textColorField = document.querySelector("#textColorSelect");
+				const fontField = document.querySelector("#fontSelect");
+				const fontSizeField = document.querySelector("#fontSizeSelect");
+				
+				wordContentField.value = word.content;
+				bgColorField.value = word.bgColor;
+				textColorField.value = word.textColor;
+				
+				fontField.value = word.font;
+				fontSizeField.value = word.fontSize;
+			} else {
+				wordContentField.value = "";
+			}
+		};
+		
+		const onWordDetailUpdate = (e) => {
+		
+			const wordContentField = document.querySelector("#wordContent");
+			const bgColorField = document.querySelector("#bgColorSelect");
+			const textColorField = document.querySelector("#textColorSelect");
+			const fontField = document.querySelector("#fontSelect");
+			const fontSizeField = document.querySelector("#fontSizeSelect");
+			
+			if(selectedTool === "editTool"){
+				for(let i = 0; i < wordsToEdit.length; i++){
+					const word = wordsToEdit[i];
+					
+					if(word.owner !== owner){
+						continue;
+					}
+					
+					word.bgColor = bgColorField.value;
+					word.textColor = textColorField.value;
+					word.font = fontField.options[fontField.selectedIndex].value;
+					word.fontSize = parseInt(fontSizeField.options[fontSizeField.selectedIndex].value);
+					
+					ctx.save();
+					ctx.font = `${word.fontSize}px ${word.font}`;
+					word.width = ctx.measureText(word.content).width;
+					ctx.restore();
+					
+					checkWordSpace(word);
+				}
+			}
+			
+			newWord.content = wordContentField.value;
+			newWord.bgColor = bgColorField.value;
+			newWord.textColor = textColorField.value;
+			newWord.font = fontField.options[fontField.selectedIndex].value;
+			newWord.fontSize = parseInt(fontSizeField.options[fontSizeField.selectedIndex].value);
+			newWord.width = ctx.measureText(newWord.content).width;
+		};
+		
+		const deleteSelection = (selectedWords) => {
+			for(let i = 0; i < selectedWords.length; i++){
+				const word = selectedWords[i];
+				if(word.deployed){
+					sendDeleteRequest(word);
+					word.deployed = false;
+				}
+				
+				if(owner === word.owner){
+					word.x = -5000;
+					word.y = -5000;
+				}
+			}
 		};
 		
 		//Helper function for parsing word selections
@@ -379,6 +595,7 @@
 			
 			for(let i = 0; i < wordSet.length; i++){
 			
+				ctx.font = "32px Nanum Pen Script";
 				let width = ctx.measureText(wordSet[i]).width;
 				
 				if(x + width + 20 > canvas.width){
@@ -389,14 +606,18 @@
 				const word = {
 					content: wordSet[i],
 					owner,
-					color: "lightblue",
+					created: new Date().getTime(),
+					bgColor: "#ADD8E6",
+					textColor: "#000000",
+					font: "Nanum Pen Script",
+					fontSize: 32,
 					x,
 					y,
 					width,
 					deployed: false,
 				}
 				
-				const key = `${word.owner}${word.content}`;
+				const key = `${word.owner}${word.content}${word.created}`;
 				const index = words.length;
 				words.push(word);
 				wordIndexer[key] = index;
@@ -407,9 +628,9 @@
 		
 		const attachSocketEvents = (sock) => {
 			sock.on('wordUpdate', (data) => {
-				const key = `${data.word.owner}${data.word.content}`;
+				const key = `${data.word.owner}${data.word.content}${data.word.created}`;
 				
-				if(wordIndexer[key] && wordIndexer[key].deleted){
+				if(wordIndexer[key] !== undefined && wordIndexer[key].deleted){
 					if(wordIndexer[key].lastUpdate >= data.word.lastUpdate){
 						return;
 					} else {
@@ -417,7 +638,7 @@
 					}
 				}
 				
-				if(wordIndexer[key]){
+				if(wordIndexer[key] !== undefined){
 				
 					const index = wordIndexer[key];
 					
@@ -427,13 +648,21 @@
 					
 					words[index].x = data.word.x;
 					words[index].y = data.word.y;
+					words[index].created = data.word.created;
+					words[index].bgColor = data.word.bgColor;
+					words[index].textColor = data.word.textColor;
+					words[index].font = data.word.font;
+					words[index].fontSize = data.word.fontSize;
 					words[index].lastUpdate = data.word.lastUpdate;
+					words[index].deployed = true;
+					
+					ctx.save();
+					ctx.font = `${data.word.fontSize}px ${data.word.font}`;
+					words[index].width = ctx.measureText(words[index].content).width;
+					ctx.restore();
+					
 				} else {
 					const index = words.length;
-					
-					if(data.word.owner === owner){
-						data.word.color = "lightblue";
-					}
 					
 					words.push(data.word);
 					wordIndexer[key] = index;
@@ -441,9 +670,8 @@
 			});
 			
 			sock.on('deleteWord', (data) => {
-				const key = `${data.word.owner}${data.word.content}`;
-				
-				if(wordIndexer[key]){
+				const key = `${data.word.owner}${data.word.content}${data.word.created}`;
+				if(wordIndexer[key] !== undefined){
 					const index = wordIndexer[key];
 					
 					//Move the word offscreen, remap the index if the word reappears
@@ -456,8 +684,14 @@
 			sock.on('credentials', (data) => {
 				owner = data.id;
 				name = data.username;
-				
-				buildWordBank(defaultWords);
+			});
+			
+			sock.on('wordbank', (data) => {
+				if(data){
+					buildWordBank(data);
+				} else {
+					buildWordBank(defaultWords);
+				}
 			});
 			
 			sock.on('chatMessage', (data) => {
@@ -487,25 +721,37 @@
 			window.AudioContext = window.AudioContext || window.webkitAudioContext;
 			audioCtx = new AudioContext();
 			
-			selectedTool = "playbackSelect";
+			selectedTool = "wordTool";
 			
 			canvas = document.querySelector("#viewport");
 			canvas.addEventListener('mousedown', activateTool);
 			canvas.addEventListener('mousemove', moveTool);
-			canvas.addEventListener('mouseout', moveTool);
+			canvas.addEventListener('mouseout', stopTool);
 			canvas.addEventListener('mouseup', stopTool);
 			
 			const sendChatButton = document.querySelector("#sendMessage");
 			sendChatButton.addEventListener('click', sendMessage);
 			
 			const playbackToolSelect = document.querySelector("#playbackTool");
-			const wordToolSelect = document.querySelector("#wordTool");
+			const addTool = document.querySelector("#addWordTool");
+			const wordTool = document.querySelector("#wordTool");
+			const editTool = document.querySelector("#editWordTool");
+			const deleteTool = document.querySelector("#deleteWordTool");
 			
-			playbackToolSelect.addEventListener('click', () => changeTool("playbackSelect"));
-			wordToolSelect.addEventListener('click', () => changeTool("wordTool"));
+			playbackToolSelect.addEventListener('click', (e) => changeTool(e, "playbackSelect"));
+			addTool.addEventListener('click', (e) => changeTool(e, "addTool"));
+			wordTool.addEventListener('click', (e) => changeTool(e, "wordTool"));
+			editTool.addEventListener('click', (e) => changeTool(e, "editTool"));
+			deleteTool.addEventListener('click', (e) => changeTool(e, "deleteTool"));
+			
+			const wordCreationForm = document.querySelector("#wordCreationForm");
+			const wordContent = document.querySelector("#wordContent");
+			wordContent.addEventListener('input', onWordDetailUpdate);
+			wordCreationForm.addEventListener('click', onWordDetailUpdate);
+			wordCreationForm.addEventListener('input', onWordDetailUpdate);
+			wordCreationForm.addEventListener('change', onWordDetailUpdate);
 			
 			ctx = canvas.getContext('2d');
-			ctx.font = "32px Arial";
 			
 			let image = new Image();
 			image.src = "lined-paper-texture-background.jpeg";
@@ -522,7 +768,7 @@
     </script>
 </head>
 <body>
-	<div class="center-block text-center">
+	<div id="header" class="bg-primary center-block text-center">
 		<h1 class="center-block">Magnetic Poetry w/ Friends</h1>
 		<hr>
 	</div>
@@ -531,9 +777,21 @@
 			<div class="col-sm-3">
 				<h2 class="text-center">Instructions</h2>
 				<hr />
-				<p>Click and drag words from the local word bank (below dotted line) onto the public space (above the dotted line).</p>
-				<p>You can move your own words freely, and even put them back into the local word bank (removing them from public space).</p>
-				<p>If you are logged in via Google Plus, you will have persistent access to your contributions. If you are a guest, your session will expire after 4 hours.</p>
+				<div id="instructions">
+					<p>If you are logged in via Google Plus, you will have persistent access to your contributions. If you are a guest, your session will expire after 4 hours.</p>
+					<h3>Tool Details</h3>
+					<p>-Use the playback tool to select a word or section (click and drag) of the poem and have it read out loud by Nicole (Amazon Polly).</p>
+					<p>-Use the add tool to add word cards to the board. To customize these word cards, edit the details in the 'Word Details' section, then click somewhere on the board to place your new word.</p>
+					<p>-Use the movement tool to move words around the board. Words that you can move will have a blue border. The semi-transparent black area at the bottom of the screen is your local word bank.
+					Dragging words from your local word bank to the public space will make them public, and dragging them back into the local space will make them private. You may only move words
+					that are part of your local word bank / words that you previously placed.</p>
+					<p>-Use the edit tool to edit a single or selection (click and drag) of words. Word attributes such as color, font, and size may be modified, but the core word content may not. As with moving
+					you may only edit words that you originally placed / had control over. (Yellow outline when edit tool is selected).</p>
+					<p>-Use the delete tool to remove a single word or a selection (click and drag) of words. Words that are deleted will be removed from both the public and local space. One again, you may only
+					delete words that you have control over. (Red outline when delete tool is selected).</p>
+					<p>Feel free to use the chat on the left panel.</p>
+					<p>Most importantly, have fun and get creative!</p>
+				</div>
 				<h2 class="text-center">Chat Room</h2>
 				<hr />
 				<div id="chatRoom">
@@ -548,7 +806,7 @@
 				</p>
 			</div>
 			<div id="canvasContainer" class="col-sm-6">
-				<canvas width="800" height="800" id="viewport" style="border: solid 2px black;"></canvas>
+				<canvas width="800" height="800" id="viewport"></canvas>
 			</div>
 			<div class="col-sm-3">
 				<h2 class="text-center">Tool Set</h2>
@@ -569,44 +827,73 @@
 					<button id="wordTool" class="btn btn-info">
 						<span class="glyphicon glyphicon-move"></span> Word Movement Tool
 					</button>
+					<span id="selectedToolMarker">
+						<span> - </span>
+						<span class="glyphicon glyphicon-ok"></span>
+						<span>- Selected Tool</span>
+					</span>
 				</p>
 				<hr />
 				<p>
 					<button id="editWordTool" class="btn btn-warning">
-						<span class="glyphicon glyphicon-pencil"></span> Word Edit Tool
+						<span class="glyphicon glyphicon-pencil"></span> Word Edit Select Tool
 					</button>
 				</p>
 				<hr />
 				<p>
 					<button id="deleteWordTool" class="btn btn-danger">
-						<span class="glyphicon glyphicon-minus"></span> Word Delete Tool
+						<span class="glyphicon glyphicon-minus"></span> Word Delete Select Tool
 					</button>
 				</p>
 				<hr />
 				
-				<h2>New Word Details</h2>
+				<h2>Word Details</h2>
 				<hr />
-				<p>
-					<span>Word: </span><input id="wordContent" type="text" />
-				</p>
-				<p>
-					<span>Background Color: </span><input id="bgColorSelect" type="color" />
-				</p>
-				<p>
-					<span>Text Color: </span><input id="textColorSelect" type="color" />
-				</p>
-				<p>
-					<span>Font: </span>
-					<select id="fontSelect">
-						<option>Arial</option>
-					</select>
-				</p>
-				<p>
-					<span>Font Size: </span>
-					<select id="fontSelect">
-						<option>32</option>
-					</select>
-				</p>
+				
+				<form id="wordCreationForm">
+					<p>
+						<label for="wordContent">Word:</label>
+						<input id="wordContent" class="form-control" type="text" name="wordContent" />
+					</p>
+					<p>
+						<div class="sideBySide">
+							<label for="bgColorSelect">Background Color: </label>
+							<input id="bgColorSelect" name="bgColorSelect" class="form-control" type="color" value="#ADD8E6" />
+						</div>
+						<div class="sideBySide">
+							<label for="textColorSelect">Text Color: </label>
+							<input id="textColorSelect" name="textColorSelect" class="form-control" type="color" value="#000000" />
+						</div>
+					</p>
+					<p>
+						<label for="fontSelect">Font: </label>
+						<select id="fontSelect" name="fontSelect" class="form-control">
+							<option value="Arial">Arial</option>
+							<option value="Pacifico">Pacifico</option>
+							<option value="Indie Flower">Indie Flower</option>
+							<option value="Kaushan Script">Kaushan Script</option>
+							<option value="Gloria Hallelujah">Gloria Hallelujah</option>
+							<option selected="selected" value="Nanum Pen Script">Nanum Pen Script</option>
+							<option value="Amatic SC">Amatic SC</option>
+							<option value="Berkshire Swash">Berkshire Swash</option>
+							<option value="Permanent Marker">Permanent Marker</option>
+							<option value="Tangerine">Tangerine</option>
+						</select>
+					</p>
+					<p>
+						<label for="fontSizeSelect">Font Size: </label>
+						<select id="fontSizeSelect" name="fontSizeSelect" class="form-control">
+							<option value="10">10px</option>
+							<option value="12">12px</option>
+							<option value="16">16px</option>
+							<option value="24">24px</option>
+							<option selected="selected" value="32">32px</option>
+							<option value="48">48px</option>
+							<option value="72">72px</option>
+							<option value="96">96px</option>
+						</select>
+					</p>
+				</form>
 			</div>
 		</div>
 	</div>

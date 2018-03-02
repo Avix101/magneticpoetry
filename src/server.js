@@ -18,7 +18,6 @@ const cookieS = cookieSession({
 });
 
 // Environment Vars
-const possibleColors = ['#93b881', 'pink', '#95879c', '#fbc97f', 'yellow', 'cyan', 'magenta'];
 const users = {};
 const roomAllocations = {};
 const socketRoomPairs = {};
@@ -31,6 +30,7 @@ const boardsToUpdate = {};
 // Integrate socket.io
 const server = http.Server(app);
 const io = require('socket.io')(server);
+const randomWords = require('random-words');
 
 const socketAuthCheck = session => session.passport && session.passport.user;
 
@@ -311,13 +311,11 @@ const onWordUpdate = (socket) => {
           return;
         }
 
-
-        word.color = users[socket.id].color;
         word.lastUpdate = new Date().getTime();
 
-        const key = `${word.owner}${word.content}`;
+        const key = `${word.owner}${word.content}${word.created}`;
 
-        const boardId = roomAllocations[id];
+        const boardId = socketRoomPairs[socket.id];
         activeBoards[boardId].board.words[key] = word;
 
         socket.broadcast.to(boardId).emit('wordUpdate', { word });
@@ -345,9 +343,11 @@ const onWordDelete = (socket) => {
 
         word.lastUpdate = new Date().getTime();
 
-        const key = `${word.owner}${word.content}`;
+        const key = `${word.owner}${word.content}${word.created}`;
 
-        const boardId = roomAllocations[id];
+        const boardId = socketRoomPairs[socket.id];
+
+        console.log(key);
 
         if (activeBoards[boardId].board.words[key]) {
           delete activeBoards[boardId].board.words[key];
@@ -368,8 +368,7 @@ const onChatMessage = (socket) => {
 
     cookieS(req, res, () => {
       if (socketAuthCheck(req.session)) {
-        const id = req.session.passport.user;
-        const boardId = roomAllocations[id];
+        const boardId = socketRoomPairs[socket.id];
 
         io.sockets.in(boardId).emit('chatMessage', data);
       }
@@ -407,6 +406,7 @@ io.on('connection', (socket) => {
         const username = user.google.username || user.local.username || 'Unknown';
         users[socket.id].name = username;
         socket.emit('credentials', { username, id: user._id });
+        socket.emit('wordbank', randomWords({ min: 20, max: 22, maxLength: 20 }));
 
         const boardId = roomAllocations[id];
 
@@ -417,15 +417,6 @@ io.on('connection', (socket) => {
         socketRoomPairs[socket.id] = boardId;
         socket.join(boardId);
         refreshActiveCount();
-
-        let randomColor;
-        if (possibleColors.length > 0) {
-          randomColor = possibleColors[Math.floor(Math.random() * possibleColors.length)];
-        } else {
-          randomColor = 'grey';
-        }
-
-        users[socket.id].color = randomColor;
 
         const wordKeys = Object.keys(activeBoards[boardId].board.words);
         for (let i = 0; i < wordKeys.length; i++) {
