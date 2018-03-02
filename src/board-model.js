@@ -9,7 +9,7 @@ const boardSchema = new Schema({
   name: String,
   owner: String,
   board: Object,
-});
+}, { minimize: false });
 
 // Create a board model
 const Board = mongoose.model('board', boardSchema);

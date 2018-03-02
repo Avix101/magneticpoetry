@@ -114,7 +114,7 @@ const createBoard = (name, owner, callback) => {
   new Board({
     name,
     owner,
-    board: { NullData: 'Empty String', words: {} },
+    board: { words: {} },
   }).save().then((newBoard) => {
     // After saving the board, load the returned data into the server's memory
     loadBoard(newBoard);
@@ -343,6 +343,11 @@ io.on('connection', (socket) => {
         socketRoomPairs[socket.id] = boardId;
         socket.join(boardId);
         refreshActiveCount();
+
+        // If board contains no words
+        if (!activeBoards[boardId].board.words) {
+          return;
+        }
 
         // Collect the room's current array of words and send them to the newly connected user
         const wordKeys = Object.keys(activeBoards[boardId].board.words);
