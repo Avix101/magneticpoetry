@@ -8,6 +8,7 @@
     <script type="text/babel" >
         "use strict";
 		
+		//If a user chooses to login as a guest, make a post to the guest auth route
 		const guestLogin = (e, form) => {
 		
 			const xhr = new XMLHttpRequest();
@@ -17,9 +18,11 @@
 			xhr.send(JSON.stringify({username: form.querySelector("#usernameInput").value}));
 		};
 	
+		//Run this as soon as the window loads
 		const init = () => {
 			const guestLoginForm = document.querySelector("#guestLoginForm");
 			
+			//Attach the guest login function as an event listener
 			guestLoginForm.addEventListener('submit', (e) => {
 				guestLogin(e, guestLoginForm);
 			});
@@ -46,7 +49,7 @@
 		<form id="guestLoginForm" action="/auth/guest" method="post">
 			<div class="form-group">
 				<label>Username</label>
-				<input id="usernameInput" name="username" type="text" class="form-control" />
+				<input id="usernameInput" name="username" type="text" class="form-control" pattern="[a-zA-Z0-9 ]+" />
 			</div>
 			
 			<input type="submit" class="btn btn-success" value="Login as Guest" />

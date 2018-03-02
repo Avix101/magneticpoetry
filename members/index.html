@@ -13,6 +13,7 @@
     <script type="text/babel" >
         "use strict";
     
+		//Declare all top-level variables (spaced out to increase readability)
 		let canvas, ctx, socket, selectedTool, toolActive, audioCtx, owner, name;
 		
 		let bgImage;
@@ -25,6 +26,7 @@
 		let wordsToEdit = [];
 		const wordIndexer = {};
 		
+		//Format for a new word
 		let newWord = {
 			content: "",
 			owner,
@@ -46,20 +48,27 @@
 			y2: 0,
 		};
 		
+		//These are the default words which are only used if the server doesn't return a random assortment
 		const defaultWords = ["ashen", "knight", "verdant", "city", "starless", "sky", "endless", "abyss",
 		"ancient", "quarry", "to", "be", "am", "I", "who", "is", "when", "the", "time", "cannot", "can", "will",
 		"won't", "are", "aren't", "then", "those", "this", "that", "them", "a", "in", "we", "an", "meme", "lord"];
 		
+		//This function is called roughly 60 times a second and redraws the canvas
 		const redrawCanvas = () => {
+			//Setup the next animation call, and clear the canvas
 			requestAnimationFrame(redrawCanvas);
 			ctx.clearRect(0, 0, canvas.width, canvas.height);
 			
+			//If the background image has loaded draw it
 			if(bgImage){
 				ctx.drawImage(bgImage, 0, 0, 800, 800);
 			}
 			
+			//The local zone line represents the separation between the local zone
+			//and the public space on the board
 			const localZoneLineHeight = (canvas.height / 4) * 3;
 			
+			//Draw the local zone
 			ctx.fillStyle = "black";
 			ctx.globalAlpha = 0.4;
 			ctx.fillRect(0, localZoneLineHeight, canvas.width, canvas.height);
@@ -75,15 +84,20 @@
 			ctx.stroke();
 			ctx.restore();
 			
+			//Create a new time seed to be used when drawing the moving dashed lines
 			const time = new Date().getTime();
 			
+			//For every word that currently exists on the board
 			for(let i = 0; i < words.length; i++){
 				const word = words[i];
 				
+				//Draw the word
 				drawWord(word, 1);
 				const rect = {x: word.x - 5, y: word.y - 5, width: word.width + 10, height: word.fontSize + 8};
 				
+				//If the word is owned by this client
 				if(word.owner === owner){
+					//Indicate that they can move, edit, or delete this word depending on the selected tool
 					switch(selectedTool){
 						case "wordTool":
 							drawSelectBox("blue", "blue", time, 0.01, rect);
@@ -98,6 +112,7 @@
 				}
 			}
 			
+			//Depending on the selected tool, either draw the potential new word, or a selection box
 			switch(selectedTool){
 				case "playbackSelect":
 					drawSelectBox("green", "lime", time, 0.02);
@@ -113,8 +128,10 @@
 			}
 		};
 		
+		//Draw a word at a given opacity
 		const drawWord = (word, opacity) => {
-		
+			
+			//Set up canvas state variables
 			ctx.save();
 			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
@@ -122,11 +139,13 @@
 			ctx.lineWidth = 2;
 			ctx.globalAlpha = opacity;
 		
+			//Draw the background
 			const rect = {x: word.x - 5, y: word.y - 5, width: word.width + 10, height: word.fontSize + 8};
 			ctx.fillStyle = word.bgColor;
 			ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 			ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
 			
+			//Write the word
 			ctx.font = `${word.fontSize}px ${word.font}`;
 			ctx.fillStyle = word.textColor;
 			ctx.fillText(word.content, word.x + (word.width / 2), word.y + word.fontSize / 2);
@@ -134,20 +153,25 @@
 			ctx.restore();
 		};
 		
+		//Have the socket emit an update about a word
 		const sendWordUpdate = (word) => {
 			socket.emit('wordUpdate', {word});
 		};
 		
+		//Have the socket request to delete a word
 		const sendDeleteRequest = (word) => {
 			socket.emit('deleteWord', {word});
 		};
 		
+		//Check where a word is and either update the word or delete it from the public space
 		const checkWordSpace = (word) => {
 			const localZoneLineHeight = (canvas.height / 4) * 3;
 			
+			//Update the word if it's north of the local zone line
 			if(word.y + word.fontSize + 8 < localZoneLineHeight){
 				word.deployed = true;
 				sendWordUpdate(word);
+			//Otherwise delete it from the public space
 			} else {
 				if(word.deployed){
 					word.deployed = false;
@@ -156,7 +180,9 @@
 			}
 		};
 		
+		//Activate a given tool (done by clicking on the canvas)
 		const activateTool = (e) => {
+			//Based on the selected tool, complete an operation like starting a select box or placing a new word
 			switch(selectedTool){
 				case "playbackSelect":
 					startSelectBox(e);
@@ -175,15 +201,19 @@
 					break;
 			}
 			
+			//Set the tool to be active
 			toolActive = true;
 		};
 		
+		//This fires when the mouse is moved across the canvas
 		const moveTool = (e) => {
-		
+			
+			//If the tool has not been activated, return
 			if(!toolActive && selectedTool != "addTool"){
 				return;
 			}
-		
+			
+			//Depending on the selected tool, update the select box, drag a word, or update the new word
 			switch(selectedTool){
 				case "playbackSelect":
 					updateSelectBox(e);
@@ -203,12 +233,15 @@
 			}
 		};
 		
+		//This fires when the user releases a click on the canvas, or when their mouse leaves the canvas
 		const stopTool = (e) => {
 		
+			//If the tool isn't active, ignore this action
 			if(!toolActive){
 				return;
 			}
 		
+			//Depending on the selected tool, perform an operation like updating the select box or parsing a selection
 			switch(selectedTool){
 				case "playbackSelect":
 					updateSelectBox(e);
@@ -227,20 +260,25 @@
 					break;
 			}
 			
+			//Change the tool to inactive
 			toolActive = false;
 		};
 		
+		//Change the selected tool
 		const changeTool = (e, tool) => {
 			selectedTool = tool;
 			
+			//Reset the select box
 			selectBox.x1 = 0;
 			selectBox.x2 = 0;
 			selectBox.y1 = 0;
 			selectBox.y2 = 0;
 			
+			//Enable or disable the word content field
 			const wordContentField = document.querySelector("#wordContent");
 			wordContentField.disabled = selectedTool === "editTool";
 			
+			//Move the active tool marker to the currently selected tool
 			const marker = document.querySelector("#selectedToolMarker");
 			marker.remove();
 			
@@ -248,6 +286,7 @@
 			toolPara.appendChild(marker);
 		};
 		
+		//Start a new selection box at the current mouse coordinates
 		const startSelectBox = (e) => {
 			const mouse = getMousePosition(e);
 			selectBox.x1 = mouse.x;
@@ -256,20 +295,23 @@
 			selectBox.y2 = mouse.y;
 		};
 		
+		//Update the existing selection box to span the start and current mouse coordinates
 		const updateSelectBox = (e) => {
 			const mouse = getMousePosition(e);
 			selectBox.x2 = mouse.x;
 			selectBox.y2 = mouse.y;
 		};
 		
+		//Update the position of the yet-to-placed new word
 		const updateNewWord = (e) => {
-			console.log(newWord);
 			const mouse = getMousePosition(e);
 			newWord.x = mouse.x;
 			newWord.y = mouse.y;
 		};
 		
+		//Place the new word at the specified location
 		const placeNewWord = (e) => {
+			//Append the new word to the current collection
 			newWord.owner = owner;
 			newWord.created = new Date().getTime();
 			const key = `${newWord.owner}${newWord.content}${newWord.created}`;
@@ -277,8 +319,10 @@
 			words.push(newWord);
 			wordIndexer[key] = index;
 			
+			//Depending on where the new word is placed, add it to local space or public space
 			checkWordSpace(words[index]);
 			
+			//Create a new word object with mostly similar data
 			newWord = {
 				content: newWord.content,
 				owner,
@@ -294,17 +338,23 @@
 			};
 		};
 		
+		//Draw a selection box
 		const drawSelectBox = (outerColor, innerColor, timeSeed, speed, rect) => {
+			//Configure canvas state variables
 			ctx.save();
 			ctx.setLineDash([4, 3]);
+			
+			//Use the time seed to calculate the current position of moving lines
 			ctx.lineDashOffset = -(timeSeed * speed) % 7;
 			ctx.strokeStyle = outerColor;
 			ctx.fillStyle = innerColor;
 			ctx.globalAlpha = 0.3;
 			
+			//If the caller provided a rect, use that rect
 			if(rect !== undefined){
 				ctx.lineWidth = 3;
 				ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+			//Default to using the global selection rect
 			} else {
 				const width = selectBox.x2 - selectBox.x1;
 				const height = selectBox.y2 - selectBox.y1;
@@ -316,12 +366,15 @@
 			ctx.restore();
 		};
 		
+		//Start moving a word around with the mouse
 		const pickupWord = (e) => {
 			const mouse = getMousePosition(e);
 			
+			//Check for collision on all words when the mouse is clicked.
 			for(let i = 0; i < words.length; i++){
 				const word = words[i];
 				
+				//If a word is clicked on, select that word to be dragged
 				if(mouse.x > word.x - 5 && mouse.x < word.x + word.width + 10){
 					if(mouse.y > word.y - 5 && mouse.y < word.y + word.fontSize + 8 && word.owner === owner){
 						prevMousePos = mouse;
@@ -333,11 +386,14 @@
 			};
 		};
 		
+		//When the mouse moves on the canvas, drag the selected word
 		const dragWord = (e) => {
+			//If the user isn't dragging a word, ignore this action
 			if(!dragging){
 				return;
 			}
 			
+			//Update the word using the mouse's movement changes
 			const mouse = getMousePosition(e);
 			const deltaX = mouse.x - prevMousePos.x;
 			const deltaY = mouse.y - prevMousePos.y;
@@ -346,21 +402,24 @@
 			words[draggingWordIndex].x += deltaX;
 			words[draggingWordIndex].y += deltaY;
 			
+			//Potentially send update or delete request depending on where the word was moved
 			checkWordSpace(words[draggingWordIndex]);
 		};
 		
+		//Drop the word that is currently being dragged
 		const dropWord = (e) => {
-		
+			//If the user wasn't dragging a word, ignore this action
 			if(!dragging){
 				return;
 			}
 			
+			//Update the word and disable dragging
 			checkWordSpace(words[draggingWordIndex]);
 			dragging = false;
 			draggingWordIndex = -1;
 		};
 		
-		//Taken from https://stackoverflow.com/questions/17130395/real-mouse-position-in-canvas
+		//Get the current position of the mouse relative to the location of the canvas on the page
 		const getMousePosition = (e) => {
 			const rect = canvas.getBoundingClientRect();
 			return {
@@ -369,17 +428,21 @@
 			};
 		};
 		
+		//Parse a given selection of words
 		const parseSelection = (callback) => {
 			let selectedWords = [];
 			
+			//Check to see if any of the words on the board are colliding with the selection box
 			for(let i = 0; i < words.length; i++){
 				const word = words[i];
 				
+				//Let's do a simple Separating Axis Theorem (2D) check
 				const leftX = selectBox.x1 < selectBox.x2 ? selectBox.x1 : selectBox.x2;
 				const topY = selectBox.y1 < selectBox.y2 ? selectBox.y1 : selectBox.y2;
 				const width = Math.abs(selectBox.x2 - selectBox.x1);
 				const height = Math.abs(selectBox.y2 - selectBox.y1);
 				
+				//If a word fails any of the 4 tests, continue to the next one
 				if(word.x - 5 > leftX + width || word.x + word.width + 5 < leftX){
 					continue;
 				}
@@ -388,12 +451,15 @@
 					continue;
 				}
 				
+				//If a word passes all 4 tests, add it to the selection array
 				selectedWords.push(word);
 			}
 			
+			//Call the requested callback passing in the selected words
 			callback(selectedWords);
 		};
 		
+		//Arrange a given selection of words to be sent as a readable string
 		const arrangeWords = (selectedWords) => {
 		
 			//Arrange words in order on x axis first
@@ -403,10 +469,13 @@
 			
 			const rows = [];
 			
+			//Iterate over the sorted selected words
 			for(let i = 0; i < selectedWords.length; i++){
 				const word = selectedWords[i];
 				
+				//Attempt to append the word to a current row
 				if(!appendRow(word, rows)){
+					//Otherwise create a new row and base its parameters off of the first word in that row
 					const row = {
 						upper: word.y + (word.fontSize * 3) / 4,
 						lower: word.y - (word.fontSize * 3) / 4,
@@ -418,25 +487,44 @@
 				}
 			}
 			
+			//Sort the rows by their y position (higher rows on the page go first)
 			rows.sort((a, b) => {
 				return a.lower - b.lower;
 			});
 			
+			//Process the formatted selection for Text to Speech
 			processSelection(rows);
 		};
 		
+		//Helper function for parsing word selections
+		const appendRow = (word, rows) => {
+			//If a word can fit in a pre-existing row, append it to that row
+			for(let j = 0; j < rows.length; j++){
+				const row = rows[j];
+				if(word.y <= row.upper && word.y >= row.lower){
+					row.words.push(word);
+					return true;
+				}
+			}
+			return false;
+		};
+		
+		//Prepare a selection of words to be edited
 		const editSelection = (selectedWords) => {
 			wordsToEdit = selectedWords;
 			
 			const wordContentField = document.querySelector("#wordContent");
 			
+			//If only one word was selected to edit
 			if(wordsToEdit.length == 1){
 				const word = wordsToEdit[0];
 				
+				//Ensure the user owns this word
 				if(word.owner !== owner){
 					return;
 				}
 				
+				//Format the word details section to contain the current information about the selected word
 				const bgColorField = document.querySelector("#bgColorSelect");
 				const textColorField = document.querySelector("#textColorSelect");
 				const fontField = document.querySelector("#fontSelect");
@@ -449,10 +537,12 @@
 				fontField.value = word.font;
 				fontSizeField.value = word.fontSize;
 			} else {
+				//If the selection contains multiple words, clear the word content field
 				wordContentField.value = "";
 			}
 		};
 		
+		//Updates the attributes of a new or existing word(s)
 		const onWordDetailUpdate = (e) => {
 		
 			const wordContentField = document.querySelector("#wordContent");
@@ -461,44 +551,59 @@
 			const fontField = document.querySelector("#fontSelect");
 			const fontSizeField = document.querySelector("#fontSizeSelect");
 			
+			//If the edit tool is selected
 			if(selectedTool === "editTool"){
+				//Iterate over the selected words to edit
 				for(let i = 0; i < wordsToEdit.length; i++){
 					const word = wordsToEdit[i];
 					
+					//Do nothing if the user does not own this word
 					if(word.owner !== owner){
 						continue;
 					}
 					
+					//Update the word's colors, font, and font size
 					word.bgColor = bgColorField.value;
 					word.textColor = textColorField.value;
 					word.font = fontField.options[fontField.selectedIndex].value;
 					word.fontSize = parseInt(fontSizeField.options[fontSizeField.selectedIndex].value);
 					
+					//Update the word's width based on the new font parameters
 					ctx.save();
 					ctx.font = `${word.fontSize}px ${word.font}`;
 					word.width = ctx.measureText(word.content).width;
 					ctx.restore();
 					
+					//Potentially send an update of the word if it's in the public space
 					checkWordSpace(word);
 				}
 			}
 			
+			//Update the new word's attributes to match the word details section
 			newWord.content = wordContentField.value;
 			newWord.bgColor = bgColorField.value;
 			newWord.textColor = textColorField.value;
 			newWord.font = fontField.options[fontField.selectedIndex].value;
 			newWord.fontSize = parseInt(fontSizeField.options[fontSizeField.selectedIndex].value);
+			
+			ctx.save();
+			ctx.font = `${newWord.fontSize}px ${newWord.font}`;
 			newWord.width = ctx.measureText(newWord.content).width;
+			ctx.restore();
 		};
 		
+		//Sends requests to delete the currently selected word(s)
 		const deleteSelection = (selectedWords) => {
 			for(let i = 0; i < selectedWords.length; i++){
 				const word = selectedWords[i];
+				//If the word is deployed, send a delete request
 				if(word.deployed){
 					sendDeleteRequest(word);
 					word.deployed = false;
 				}
 				
+				//If the user owns this word, move it off screen
+				//The server will automatically reject unauthorized calls
 				if(owner === word.owner){
 					word.x = -5000;
 					word.y = -5000;
@@ -506,25 +611,17 @@
 			}
 		};
 		
-		//Helper function for parsing word selections
-		const appendRow = (word, rows) => {
-			for(let j = 0; j < rows.length; j++){
-				const row = rows[j];
-				if(word.y <= row.upper && word.y >= row.lower){
-					row.words.push(word);
-					return true;
-				}
-			}
-			return false;
-		};
-		
+		//Process a parsed poem and prepare it for TTS
 		const processSelection = (rows) => {
+			//Start building the request string
 			let ttsString = "<speak>";
 			
+			//If no words are selected, just return
 			if(rows.length === 0){
 				return;
 			}
 			
+			//Iterate over the rows and the words
 			for(let i = 0; i < rows.length; i++){
 				const row = rows[i];
 				let prevX;
@@ -532,27 +629,35 @@
 				for(let j = 0; j < row.words.length; j++){
 					const word = row.words[j];
 					
+					//If there's a larger horizontal gap between words, put a space in the playback
 					if(prevX && prevX < word.x - 50){
-					//Break horizontal gaps
+						//Break horizontal gaps
 						ttsString = `${ttsString}, <break strength="strong"/>`;
 					}
 					
 					ttsString = `${ttsString} ${word.content}`;
 					prevX = word.x + word.width + 10;
 				}
-				//Break rows
+				//When moving to the next row, the reader should pause for a longer period of time
 				ttsString = `${ttsString} <break strength="x-strong"/>\n`;
 			}
 			
+			//Complete the request string
 			ttsString = `${ttsString}</speak>`;
 			
+			//Send the formatted TTS string to the server
 			requestTTS(ttsString);
 		};
 		
 		//Learned how to process tts using Amazon Polly from:
 		//https://medium.com/@smcelhinney/building-a-greeting-app-using-amazon-polly-and-nodejs-a605f29c20f5
+		
+		//Process returned stream data and play it in the browser
 		const processTTS = (data) => {
+			//Create a new buffered source
 			const source = audioCtx.createBufferSource();
+			
+			//Decode the sent data and play the audio
 			audioCtx.decodeAudioData(data, (buffer) => {
 				source.buffer = buffer;
 				source.connect(audioCtx.destination);
@@ -560,25 +665,31 @@
 			});
 		};
 		
+		//Make a request to the server to process a TTS string
 		const requestTTS = (ttsString) => {
+			
+			//Make a new post request
 			const xhr = new XMLHttpRequest();
 			xhr.open('POST', '/request-tts', true);
 			xhr.responseType = 'arraybuffer';
 			
+			//Process the TTS audio when it comes back
 			xhr.onload = () => {
-				const data = xhr.response;
-				processTTS(data);
+				processTTS(xhr.response);
 			};
 			
 			xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
 			
+			//Send the formatted TTS request
 			xhr.send(JSON.stringify({text: ttsString}));
 		};
 		
+		//Send a chat message to the server
 		const sendMessage = () => {
 			const messageBox = document.querySelector("#chatText");
 			const message = messageBox.value;
 			
+			//If the message is empty, don't bother
 			if(message === ""){
 				return;
 			}
@@ -587,22 +698,27 @@
 			socket.emit('chatMessage', {name, message});
 		};
 		
+		//Construct a local word bank given an array of words
 		const buildWordBank = (wordSet) => {
 			
 			const localZoneLineHeight = (canvas.height / 4) * 3;
 			let x = 10;
 			let y = localZoneLineHeight + 10;
 			
+			//Iterate over the given array of words
 			for(let i = 0; i < wordSet.length; i++){
 			
+				//Set the default font and calcualte the width
 				ctx.font = "32px Nanum Pen Script";
 				let width = ctx.measureText(wordSet[i]).width;
 				
+				//Calculate the word's position on the canvas in the local space
 				if(x + width + 20 > canvas.width){
 					y += 50;
 					x = 10;
 				} 
-			
+				
+				//Create a new word with the correct default params
 				const word = {
 					content: wordSet[i],
 					owner,
@@ -617,6 +733,7 @@
 					deployed: false,
 				}
 				
+				//Add the new word to the managed collection
 				const key = `${word.owner}${word.content}${word.created}`;
 				const index = words.length;
 				words.push(word);
@@ -626,10 +743,13 @@
 			}
 		};
 		
+		//Attach events (certain server calls) to the socket
 		const attachSocketEvents = (sock) => {
+			//This fires when the server sends a word update
 			sock.on('wordUpdate', (data) => {
 				const key = `${data.word.owner}${data.word.content}${data.word.created}`;
 				
+				//Check to see if the word has been marked for deletion - take into account the last update
 				if(wordIndexer[key] !== undefined && wordIndexer[key].deleted){
 					if(wordIndexer[key].lastUpdate >= data.word.lastUpdate){
 						return;
@@ -638,14 +758,17 @@
 					}
 				}
 				
+				//If the word already exists in this users collection
 				if(wordIndexer[key] !== undefined){
 				
 					const index = wordIndexer[key];
 					
+					//Return early if the update is not the latest
 					if(words[index].lastUpdate >= data.word.lastUpdate){
 						return;
 					}
 					
+					//Update the word's attributes
 					words[index].x = data.word.x;
 					words[index].y = data.word.y;
 					words[index].created = data.word.created;
@@ -656,12 +779,14 @@
 					words[index].lastUpdate = data.word.lastUpdate;
 					words[index].deployed = true;
 					
+					//Recalculate the word's width
 					ctx.save();
 					ctx.font = `${data.word.fontSize}px ${data.word.font}`;
 					words[index].width = ctx.measureText(words[index].content).width;
 					ctx.restore();
 					
 				} else {
+					//If the word doesn't exist in this user's collection, add it
 					const index = words.length;
 					
 					words.push(data.word);
@@ -669,8 +794,10 @@
 				}
 			});
 			
+			//This fires when the server requests that a word be deleted
 			sock.on('deleteWord', (data) => {
 				const key = `${data.word.owner}${data.word.content}${data.word.created}`;
+				//If the word is defined in this user's collection (which it should be)
 				if(wordIndexer[key] !== undefined){
 					const index = wordIndexer[key];
 					
@@ -681,23 +808,30 @@
 				}
 			});
 			
+			//This fires when the server parses user information and is ready to send an owner id and username
 			sock.on('credentials', (data) => {
+				//Update this user's unique id and username
 				owner = data.id;
 				name = data.username;
 			});
 			
+			//This fires when the server receives a call to build a word bank
 			sock.on('wordbank', (data) => {
+				//If the server sent back an array of words, build the word bank using those words
 				if(data){
 					buildWordBank(data);
 				} else {
+					//Use the default set of words in the event of not data being returned
 					buildWordBank(defaultWords);
 				}
 			});
 			
+			//This fires when the server broadcasts a chat message
 			sock.on('chatMessage', (data) => {
 				
 				const chatWindow = document.querySelector("#chatRoom");
 				
+				//Format and add a new paragraph containing the messager's username and message
 				const para = document.createElement('p');
 				const messageElement = document.createElement('span');
 				const nameElement = document.createElement('span');
@@ -714,21 +848,27 @@
 			});
 		};
 		
+		//Run this when the page loads
 		const init = () => {
+			//Connect the user's socket and attach socket events
 			socket = io.connect();
 			attachSocketEvents(socket);
 			
+			//Setup the window's audio context
 			window.AudioContext = window.AudioContext || window.webkitAudioContext;
 			audioCtx = new AudioContext();
 			
+			//Set the user's default tool as the word movement tool
 			selectedTool = "wordTool";
 			
+			//Add canvas event listeners
 			canvas = document.querySelector("#viewport");
 			canvas.addEventListener('mousedown', activateTool);
 			canvas.addEventListener('mousemove', moveTool);
 			canvas.addEventListener('mouseout', stopTool);
 			canvas.addEventListener('mouseup', stopTool);
 			
+			//Add a listener to the chat button
 			const sendChatButton = document.querySelector("#sendMessage");
 			sendChatButton.addEventListener('click', sendMessage);
 			
@@ -738,12 +878,14 @@
 			const editTool = document.querySelector("#editWordTool");
 			const deleteTool = document.querySelector("#deleteWordTool");
 			
+			//Add listeners to the tool buttons
 			playbackToolSelect.addEventListener('click', (e) => changeTool(e, "playbackSelect"));
 			addTool.addEventListener('click', (e) => changeTool(e, "addTool"));
 			wordTool.addEventListener('click', (e) => changeTool(e, "wordTool"));
 			editTool.addEventListener('click', (e) => changeTool(e, "editTool"));
 			deleteTool.addEventListener('click', (e) => changeTool(e, "deleteTool"));
 			
+			//Add listeners to the word details form
 			const wordCreationForm = document.querySelector("#wordCreationForm");
 			const wordContent = document.querySelector("#wordContent");
 			wordContent.addEventListener('input', onWordDetailUpdate);
@@ -753,6 +895,7 @@
 			
 			ctx = canvas.getContext('2d');
 			
+			//Setup the background image
 			let image = new Image();
 			image.src = "lined-paper-texture-background.jpeg";
 			
@@ -760,6 +903,7 @@
 				bgImage = image;
 			}
 			
+			//Begin the drawing loop
 			requestAnimationFrame(redrawCanvas);
 		};
 		
@@ -853,7 +997,7 @@
 				<form id="wordCreationForm">
 					<p>
 						<label for="wordContent">Word:</label>
-						<input id="wordContent" class="form-control" type="text" name="wordContent" />
+						<input id="wordContent" class="form-control" type="text" name="wordContent" pattern="[a-zA-Z0-9 ]+" />
 					</p>
 					<p>
 						<div class="sideBySide">

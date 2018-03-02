@@ -11,19 +11,23 @@
 	
 		let socket;
 	
+		//Format the returned ajax data and create links to the available poetry boars
 		const displayBoards = (xhr) => {
-			console.log(xhr.response);
+			//Parse data, grab the active and inactive divs
 			const boards = JSON.parse(xhr.response);
 			
 			const activeBoardsDiv = document.querySelector("#activeBoards");
 			const inactiveBoardsDiv = document.querySelector("#inactiveBoards");
 			
+			//Clear both divs
 			activeBoardsDiv.innerHTML = "";
 			inactiveBoardsDiv.innerHTML = "";
 			
+			//For each returned board
 			for(let i = 0; i < boards.length; i++){
 				const board = boards[i];
 				
+				//Create a link to the board and put it in the active or inactive div based on user count
 				const para = document.createElement('p');
 				const link = document.createElement('a');
 				link.href = `/members/index.html?board=${board.id}`;
@@ -39,6 +43,7 @@
 			}
 		};
 	
+		//Make an ajax call to get all of the available poetry boards
 		const getBoards = () => {
 			const xhr = new XMLHttpRequest();
 			
@@ -50,6 +55,7 @@
 			xhr.send();
 		};
 		
+		//Create a brand new poetry board via a post request (Google + users only)
 		const createBoard = (e, form) => {
 			e.preventDefault();
 		
@@ -58,6 +64,7 @@
 			
 			const boardNameInput = form.querySelector("#boardName");
 			
+			//Check to make sure the name field isn't empty
 			if(boardNameInput.value === ""){
 				return false;
 			}
@@ -65,6 +72,7 @@
 			const boardName = boardNameInput.value;
 			boardNameInput.value = "";
 			
+			//Normal format for a post request
 			const xhr = new XMLHttpRequest();
 			
 			xhr.open(method, action);
@@ -80,11 +88,12 @@
 			return false;
 		};
 	
+		//Run this as soon as the window loads
 		const init = () => {
-			//socket = io.connect();
-			
+			//Grab the available poetry boards right away
 			getBoards();
 		
+			//Attach an event listener to the create board form
 			const createBoardForm = document.querySelector("#createBoardForm");
 			createBoardForm.addEventListener('submit', (e) => {
 				createBoard(e, createBoardForm);
@@ -106,7 +115,7 @@
 		<form id="createBoardForm" action="/members/createBoard" method="post">
 			<div class="form-group">
 				<label>Board Name</label>
-				<input id="boardName" name="boardname" type="text" class="form-control" />
+				<input id="boardName" name="boardname" type="text" class="form-control" pattern="[a-zA-Z0-9 ]+" />
 			</div>
 			
 			<input id="createBoard" type="submit" class="btn btn-large btn-success" value="Create New Board+" />
